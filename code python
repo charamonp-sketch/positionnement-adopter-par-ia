@@ -1,0 +1,75 @@
+from google import genai
+import yfinance as yf
+import pandas as pd
+import numpy as np
+
+API_KEY = "AIzaSyDbQculnDr2zGmn1HH2SvooXcGIx8tlh28"
+client = genai.Client(api_key=API_KEY)
+MODEL_ID = "gemini-2.5-flash"
+
+def calculate_expert_indicators(df):
+    """Calcule les indicateurs techniques avancÃ©s"""
+    # 1. EMA (Moyennes Mobiles)
+    df['EMA_20'] = df['Close'].ewm(span=20, adjust=False).mean()
+    df['EMA_50'] = df['Close'].ewm(span=50, adjust=False).mean()
+    
+    # 2. RSI
+    delta = df['Close'].diff()
+    gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+    loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+    df['RSI'] = 100 - (100 / (1 + (gain / loss)))
+    
+    # 3. BANDES DE BOLLINGER (20 jours, 2 Ã©carts-types)
+    df['MA20'] = df['Close'].rolling(window=20).mean()
+    df['STD20'] = df['Close'].rolling(window=20).std()
+    df['BB_Upper'] = df['MA20'] + (df['STD20'] * 2)
+    df['BB_Lower'] = df['MA20'] - (df['STD20'] * 2)
+    
+    # 4. MACD
+    df['MACD_Line'] = df['Close'].ewm(span=12, adjust=False).mean() - df['Close'].ewm(span=26, adjust=False).mean()
+    df['MACD_Signal'] = df['MACD_Line'].ewm(span=9, adjust=False).mean()
+    df['MACD_Hist'] = df['MACD_Line'] - df['MACD_Signal']
+    
+    return df
+
+def get_expert_analysis(symbol):
+    print(f"\n--- ANALYSE TECHNIQUE EXPERTE : {symbol} ---")
+    
+    ticker = yf.Ticker(symbol)
+    df = ticker.history(period="1y")
+    if df.empty: return "Symbole introuvable."
+
+    df = calculate_expert_indicators(df)
+    
+    recent = df.tail(15)
+    current = recent.iloc[-1]
+    
+    prompt = f"""
+    Tu es un analyste de fonds spÃ©culatifs expert en analyse technique.
+    Actif : {symbol} | Prix actuel : {current['Close']:.2f}
+    
+    INDICATEURS ACTUELS :
+    - RSI : {current['RSI']:.2f} (30=survendu, 70=surachetÃ©)
+    - Bollinger : Prix Ã  {current['Close']:.2f} (Haut: {current['BB_Upper']:.2f}, Bas: {current['BB_Lower']:.2f})
+    - MACD : Ligne={current['MACD_Line']:.4f}, Signal={current['MACD_Signal']:.4f}
+    - Moyennes : EMA20={current['EMA_20']:.2f}, EMA50={current['EMA_50']:.2f}
+    
+    DONNÃ‰ES RÃ‰CENTES :
+    {recent[['Close', 'RSI', 'BB_Upper', 'BB_Lower', 'MACD_Hist']].to_string()}
+    
+    INSTRUCTIONS :
+    1. Analyse la VOLATILITÃ‰ via les Bandes de Bollinger (sommes-nous en haut, en bas, ou en resserrement ?).
+    2. Analyse le MOMENTUM via le MACD (croisement haussier ou baissier ?).
+    3. Regarde la CONFLUENCE (Est-ce que le RSI et Bollinger disent la mÃªme chose ?).
+    4. Donne une recommandation ferme : ACHAT, VENTE ou ATTENTE.
+    5. Fixe un Stop-Loss et un Take-Profit.
+    """
+
+    try:
+        response = client.models.generate_content(model=MODEL_ID, contents=prompt)
+        return response.text
+    except Exception as e:
+        return f"Erreur API : {e}"
+
+#test
+print(get_expert_analysis("TTE.PA"))
