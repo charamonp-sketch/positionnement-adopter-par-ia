@@ -3,7 +3,7 @@ import yfinance as yf
 import pandas as pd
 import numpy as np
 
-API_KEY = "AIzaSyDbQculnDr2zGmn1HH2SvooXcGIx8tlh28"
+API_KEY = "clé api à utiliser"
 client = genai.Client(api_key=API_KEY)
 MODEL_ID = "gemini-2.5-flash"
 
